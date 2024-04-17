@@ -55,7 +55,7 @@ class TestPrestoValidator(SupersetTestCase):
         sql = "SELECT 1 FROM default.notarealtable"
         schema = "default"
 
-        errors = self.validator.validate(sql, schema, self.database)
+        errors = self.validator.validate(sql, None, schema, self.database)
 
         self.assertEqual([], errors)
 
@@ -69,7 +69,7 @@ class TestPrestoValidator(SupersetTestCase):
         fetch_fn.side_effect = DatabaseError("dummy db error")
 
         with self.assertRaises(PrestoSQLValidationError):
-            self.validator.validate(sql, schema, self.database)
+            self.validator.validate(sql, None, schema, self.database)
 
     @patch("superset.utils.core.g")
     def test_validator_unexpected_error(self, flask_g):
@@ -81,7 +81,7 @@ class TestPrestoValidator(SupersetTestCase):
         fetch_fn.side_effect = Exception("a mysterious failure")
 
         with self.assertRaises(Exception):
-            self.validator.validate(sql, schema, self.database)
+            self.validator.validate(sql, None, schema, self.database)
 
     @patch("superset.utils.core.g")
     def test_validator_query_error(self, flask_g):
@@ -92,7 +92,7 @@ class TestPrestoValidator(SupersetTestCase):
         fetch_fn = self.database.db_engine_spec.fetch_data
         fetch_fn.side_effect = DatabaseError(self.PRESTO_ERROR_TEMPLATE)
 
-        errors = self.validator.validate(sql, schema, self.database)
+        errors = self.validator.validate(sql, None, schema, self.database)
 
         self.assertEqual(1, len(errors))
 
@@ -104,7 +104,10 @@ class TestPostgreSQLValidator(SupersetTestCase):
 
         mock_database = MagicMock()
         annotations = PostgreSQLValidator.validate(
-            sql='SELECT 1, "col" FROM "table"', schema="", database=mock_database
+            sql='SELECT 1, "col" FROM "table"',
+            catalog=None,
+            schema="",
+            database=mock_database,
         )
         assert annotations == []
 
@@ -114,7 +117,10 @@ class TestPostgreSQLValidator(SupersetTestCase):
 
         mock_database = MagicMock()
         annotations = PostgreSQLValidator.validate(
-            sql='SELECT 1, "col"\nFROOM "table"', schema="", database=mock_database
+            sql='SELECT 1, "col"\nFROOM "table"',
+            catalog=None,
+            schema="",
+            database=mock_database,
         )
 
         assert len(annotations) == 1
