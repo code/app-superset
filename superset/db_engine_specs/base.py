@@ -640,11 +640,11 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
         return driver in cls.drivers
 
     @classmethod
-    def get_default_schema(cls, database: Database) -> str | None:
+    def get_default_schema(cls, database: Database, catalog: str | None) -> str | None:
         """
         Return the default schema in a given database.
         """
-        with database.get_inspector() as inspector:
+        with database.get_inspector(catalog=catalog) as inspector:
             return inspector.default_schema_name
 
     @classmethod
@@ -699,7 +699,7 @@ class BaseEngineSpec:  # pylint: disable=too-many-public-methods
             return schema
 
         # return the default schema of the database
-        return cls.get_default_schema(database)
+        return cls.get_default_schema(database, query.catalog)
 
     @classmethod
     def get_dbapi_exception_mapping(cls) -> dict[type[Exception], type[Exception]]:

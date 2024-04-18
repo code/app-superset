@@ -85,7 +85,7 @@ def _setup_csv_upload(allowed_schemas: list[str] | None = None):
     yield
 
     upload_db = get_upload_db()
-    with upload_db.get_sqla_engine_with_context() as engine:
+    with upload_db.get_sqla_engine() as engine:
         engine.execute(f"DROP TABLE IF EXISTS {CSV_UPLOAD_TABLE}")
         engine.execute(f"DROP TABLE IF EXISTS {CSV_UPLOAD_TABLE_W_SCHEMA}")
     db.session.delete(upload_db)
@@ -221,7 +221,7 @@ def test_csv_upload_options(csv_data, options, table_data):
             create_csv_file(csv_data),
             options=options,
         ).run()
-        with upload_database.get_sqla_engine_with_context() as engine:
+        with upload_database.get_sqla_engine() as engine:
             data = engine.execute(f"SELECT * from {CSV_UPLOAD_TABLE}").fetchall()
             assert data == table_data
 
