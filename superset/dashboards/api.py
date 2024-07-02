@@ -16,7 +16,6 @@
 # under the License.
 # pylint: disable=too-many-lines
 import functools
-import json
 import logging
 from datetime import datetime
 from io import BytesIO
@@ -33,7 +32,7 @@ from marshmallow import ValidationError
 from werkzeug.wrappers import Response as WerkzeugResponse
 from werkzeug.wsgi import FileWrapper
 
-from superset import is_feature_enabled, thumbnail_cache
+from superset import db, is_feature_enabled, thumbnail_cache
 from superset.charts.schemas import ChartEntityResponseSchema
 from superset.commands.dashboard.create import CreateDashboardCommand
 from superset.commands.dashboard.delete import DeleteDashboardCommand
@@ -49,6 +48,7 @@ from superset.commands.dashboard.exceptions import (
 from superset.commands.dashboard.export import ExportDashboardsCommand
 from superset.commands.dashboard.importers.dispatcher import ImportDashboardsCommand
 from superset.commands.dashboard.update import UpdateDashboardCommand
+from superset.commands.exceptions import TagForbiddenError
 from superset.commands.importers.exceptions import NoValidFilesFoundError
 from superset.commands.importers.v1.utils import get_contents_from_bundle
 from superset.constants import MODEL_API_RW_METHOD_PERMISSION_MAP, RouteMethod
@@ -76,6 +76,7 @@ from superset.dashboards.schemas import (
     get_fav_star_ids_schema,
     GetFavStarIdsSchema,
     openapi_spec_methods_override,
+    TabsPayloadSchema,
     thumbnail_query_schema,
 )
 from superset.extensions import event_logger
@@ -83,6 +84,7 @@ from superset.models.dashboard import Dashboard
 from superset.models.embedded_dashboard import EmbeddedDashboard
 from superset.tasks.thumbnails import cache_dashboard_thumbnail
 from superset.tasks.utils import get_current_user
+from superset.utils import json
 from superset.utils.screenshots import DashboardScreenshot
 from superset.utils.urls import get_url_path
 from superset.views.base_api import (
@@ -141,6 +143,7 @@ class DashboardRestApi(BaseSupersetModelRestApi):
         "remove_favorite",
         "get_charts",
         "get_datasets",
+        "get_tabs",
         "get_embedded",
         "set_embedded",
         "delete_embedded",
@@ -236,6 +239,7 @@ class DashboardRestApi(BaseSupersetModelRestApi):
     chart_entity_response_schema = ChartEntityResponseSchema()
     dashboard_get_response_schema = DashboardGetResponseSchema()
     dashboard_dataset_schema = DashboardDatasetSchema()
+    tab_schema = TabsPayloadSchema()
     embedded_response_schema = EmbeddedDashboardResponseSchema()
     embedded_config_schema = EmbeddedDashboardConfigSchema()
 
@@ -268,6 +272,7 @@ class DashboardRestApi(BaseSupersetModelRestApi):
         DashboardCopySchema,
         DashboardGetResponseSchema,
         DashboardDatasetSchema,
+        TabsPayloadSchema,
         GetFavStarIdsSchema,
         EmbeddedDashboardResponseSchema,
     )
@@ -388,6 +393,64 @@ class DashboardRestApi(BaseSupersetModelRestApi):
             return self.response_400(
                 message=gettext(
                     "Dataset schema is invalid, caused by: %(error)s", error=str(err)
+                )
+            )
+        except DashboardAccessDeniedError:
+            return self.response_403()
+        except DashboardNotFoundError:
+            return self.response_404()
+
+    @expose("/<id_or_slug>/tabs", methods=("GET",))
+    @protect()
+    @safe
+    @statsd_metrics
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.get_tabs",
+        log_to_statsd=False,
+    )
+    def get_tabs(self, id_or_slug: str) -> Response:
+        """Get dashboard's tabs.
+        ---
+        get:
+          summary: Get dashboard's tabs
+          description: >-
+            Returns a list of a dashboard's tabs and dashboard's nested tree structure for associated tabs.
+          parameters:
+          - in: path
+            schema:
+              type: string
+            name: id_or_slug
+            description: Either the id of the dashboard, or its slug
+          responses:
+            200:
+              description: Dashboard tabs
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      result:
+                        type: object
+                        items:
+                          $ref: '#/components/schemas/TabsPayloadSchema'
+            400:
+              $ref: '#/components/responses/400'
+            401:
+              $ref: '#/components/responses/401'
+            403:
+              $ref: '#/components/responses/403'
+            404:
+              $ref: '#/components/responses/404'
+        """
+        try:
+            tabs = DashboardDAO.get_tabs_for_dashboard(id_or_slug)
+            result = self.tab_schema.dump(tabs)
+            return self.response(200, result=result)
+
+        except (TypeError, ValueError) as err:
+            return self.response_400(
+                message=gettext(
+                    "Tab schema is invalid, caused by: %(error)s", error=str(err)
                 )
             )
         except DashboardAccessDeniedError:
@@ -577,6 +640,8 @@ class DashboardRestApi(BaseSupersetModelRestApi):
             response = self.response_404()
         except DashboardForbiddenError:
             response = self.response_403()
+        except TagForbiddenError as ex:
+            response = self.response(403, message=str(ex))
         except DashboardInvalidError as ex:
             return self.response_422(message=ex.normalized_messages())
         except DashboardUpdateFailedError as ex:
@@ -1249,7 +1314,13 @@ class DashboardRestApi(BaseSupersetModelRestApi):
         """
         try:
             body = self.embedded_config_schema.load(request.json)
-            embedded = EmbeddedDashboardDAO.upsert(dashboard, body["allowed_domains"])
+
+            with db.session.begin_nested():
+                embedded = EmbeddedDashboardDAO.upsert(
+                    dashboard,
+                    body["allowed_domains"],
+                )
+
             result = self.embedded_response_schema.dump(embedded)
             return self.response(200, result=result)
         except ValidationError as error:

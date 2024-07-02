@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -120,6 +119,7 @@ from superset.extensions import security_manager
 from superset.models.core import Database
 from superset.sql_parse import Table
 from superset.superset_typing import FlaskResponse
+from superset.utils import json
 from superset.utils.core import error_msg_from_exception, parse_js_uri_path_item
 from superset.utils.oauth2 import decode_oauth2_state
 from superset.utils.ssh_tunnel import mask_password_info
@@ -1410,7 +1410,7 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
             database_id=state["database_id"],
         )
         if existing:
-            DatabaseUserOAuth2TokensDAO.delete([existing], commit=True)
+            DatabaseUserOAuth2TokensDAO.delete([existing])
 
         # store tokens
         expiration = datetime.now() + timedelta(seconds=token_response["expires_in"])
@@ -1422,7 +1422,6 @@ class DatabaseRestApi(BaseSupersetModelRestApi):
                 "access_token_expiration": expiration,
                 "refresh_token": token_response.get("refresh_token"),
             },
-            commit=True,
         )
 
         # return blank page that closes itself

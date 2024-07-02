@@ -19,7 +19,6 @@
 
 from datetime import datetime
 import imp
-import json
 from contextlib import contextmanager
 from typing import Any, Union, Optional
 from unittest.mock import Mock, patch, MagicMock
@@ -43,6 +42,7 @@ from superset.models.slice import Slice
 from superset.models.core import Database
 from superset.models.dashboard import Dashboard
 from superset.utils.core import get_example_default_schema, shortid
+from superset.utils import json
 from superset.utils.database import get_example_database
 from superset.views.base_api import BaseSupersetModelRestApi
 
@@ -203,8 +203,7 @@ class SupersetTestCase(TestCase):
         previous_g_user = g.user if hasattr(g, "user") else None
         try:
             if login:
-                resp = self.login(username=temp_user.username)
-                print(resp)
+                self.login(username=temp_user.username)
             else:
                 g.user = temp_user
             yield temp_user

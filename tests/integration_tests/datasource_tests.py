@@ -16,7 +16,6 @@
 # under the License.
 """Unit tests for Superset"""
 
-import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from unittest import mock
@@ -36,6 +35,7 @@ from superset.constants import CacheRegion
 from superset.daos.exceptions import DatasourceNotFound, DatasourceTypeNotSupportedError
 from superset.exceptions import SupersetGenericDBErrorException
 from superset.models.core import Database
+from superset.utils import json
 from superset.utils.core import backend, get_example_default_schema  # noqa: F401
 from superset.utils.database import (  # noqa: F401
     get_example_database,
@@ -88,7 +88,6 @@ class TestDatasource(SupersetTestCase):
         )
 
     def test_always_filter_main_dttm(self):
-        self.login(ADMIN_USERNAME)
         database = get_example_database()
 
         sql = f"SELECT DATE() as default_dttm, DATE() as additional_dttm, 1 as metric;"  # noqa: F541
@@ -363,7 +362,6 @@ class TestDatasource(SupersetTestCase):
             elif k == "owners":
                 self.assertEqual([o["id"] for o in resp[k]], datasource_post["owners"])
             else:
-                print(k)
                 self.assertEqual(resp[k], datasource_post[k])
 
     def test_save_default_endpoint_validation_success(self):
